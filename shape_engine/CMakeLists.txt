@@ -1,0 +1,19 @@
+﻿cmake_minimum_required (VERSION 3.15)
+project(shape_engine LANGUAGES CXX VERSION 0.1.0)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+file(GLOB headers *.h)
+
+add_library(${PROJECT_NAME} INTERFACE)
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+	
+target_include_directories(
+	${PROJECT_NAME} INTERFACE
+	"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+)
+
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_17)
