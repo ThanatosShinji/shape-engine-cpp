@@ -1,13 +1,13 @@
 # `shape-engine-cpp`
 
-A tiny inference sample with onnx-tool's compute graph and shape engine.  
-It implements cpp version of onnx-tool's compute graph and shape engine loader. It allows you to use the graph structure and runtime dynamic shape engine serialized by onnx-tool.  
-This repo also creates a tiny template inference engine for ResNet18 model. This inference engine supports dynamic input tensor shapes with compiled size of ~70KB.
+A tiny inference sample with onnx-tool's compute graph and shape engine.  It implements cpp version of onnx-tool's compute graph and shape engine loader.   
+This repo also creates a tiny inference engine template for ResNet18 model. The size of compiled engine is 76KB.
 
   
 ## Compute Graph & Shape Engine  
 ---
-This step needs that one ONNX model is serialized by onnx-tool. "resnet18.cg" is the serialized compute graph of ResNet18. "resnet18.se" is the serialized shape engine of ResNet18. 
+These two binary files are created by onnx-tool, please refer [link](https://github.com/ThanatosShinji/onnx-tool/blob/main/data/inference_engine.md).  
+"resnet18.cg" is the serialized compute graph of ResNet18. "resnet18.se" is the serialized shape engine of ResNet18. 
 ~~~cpp
 	const char* filepath = "resnet18.se";
 	//Shape engine is very light
