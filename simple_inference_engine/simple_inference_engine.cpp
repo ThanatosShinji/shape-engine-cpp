@@ -489,8 +489,9 @@ REGISTER_LAYER(Gemm);
 
 void load_shape_engine()
 {
-	const char* filepath = "tmp.bin";
+	const char* filepath = "resnet18.se";
 	auto engine = onnx_tool::shape_engine::ShapeEngine();
+	//deserialize binary file export by onnx-tool's serilization module
 	engine.deserializeFile(filepath);
 	engine.update_variable("w", 224);
 	engine.update_variable("h", 299);
@@ -512,37 +513,52 @@ void load_shape_engine()
 
 void load_compute_graph()
 {
-	const char* filepath = "compute_graph.bin";
+	const char* filepath = "resnet18.cg";
+	//deserialize binary file export by onnx-tool's serilization module
 	auto ptr = onnx_tool::Graph::deserializeFile(filepath);
 	delete ptr;
 }
 
 void inference_engine()
 {
-	const char* filepath = "shape_engine.bin";
+	const char* filepath = "resnet18.se";
+	//Shape engine is very light
+	//Each binding should have its unique shape engine
 	auto engine = onnx_tool::shape_engine::ShapeEngine();
 	engine.deserializeFile(filepath);
-	const char* cfilepath = "compute_graph.bin";
+
+	//Avoid to copy this instance
+	//Graph contains all weights, you dont want multiple copies
+	const char* cfilepath = "resnet18.cg";
 	auto ptr = onnx_tool::Graph::deserializeFile(cfilepath);
+
+	//Contruct inference context with compute graph and shape engine
 	auto ctx = InferenceContext(ptr, engine);
+
+	//Create one dynamic bindings. bindings means a group of dynamic tensors,
+	//bindings can be parallelly executed on multiple CPU cores.
 	auto dbindings = ctx.createDynamicBindings();
 	auto maxshape = variable_pairs_t{ {"w",224},{"h",224} };
-	dbindings->updateMemory(maxshape);
+	dbindings->updateMemory(maxshape);//memory allocation for Maxmimum input shapes
+
+	//Runtime Engine=Op Kernels+static weights
+	//one runtime Engine can only execute one bindings at the same time
 	auto runtime = ctx.createRuntimeEngine();
 
-	auto inputidx=ctx.mDynamicIndexMap["data"];
-	auto outputidx=ctx.mDynamicIndexMap["resnetv15_dense0_fwd"];
-	auto inputptr = (float*)dbindings->mPtrs[inputidx];
-	auto in_shape = dbindings->mShapePtr[inputidx];
-	auto out_shape = dbindings->mShapePtr[outputidx];
+	auto inputidx=ctx.mDynamicIndexMap["data"];//input tensor
+	auto inputptr = (float*)dbindings->mPtrs[inputidx];//input tensor buffer
+	auto in_shape = dbindings->mShapePtr[inputidx];//input shape pointer
 	auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1,std::multiplies<int>());
 	for (int i = 0; i < size; i++)
 	{
 		inputptr[i] = 0.5f;
 	}
 	printf("\n1x3x224x224\n");
-	runtime->forward_dynamic(dbindings);
+	runtime->forward_dynamic(dbindings);//inference with this bindings
+
+	auto outputidx = ctx.mDynamicIndexMap["resnetv15_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
+	auto out_shape = dbindings->mShapePtr[outputidx];//output shape pointer
 	auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1, std::multiplies<int>());
 	for (int i = 0; i < osize; i++)
 	{
@@ -551,7 +567,7 @@ void inference_engine()
 	printf("\n");
 
 	auto newshape = variable_pairs_t{ {"w",112},{"h",122} };
-	dbindings->reshape(newshape);
+	dbindings->reshape(newshape);//all shapes in this bindings will be updated
 	printf("\n1x3x112x122\n");
 	runtime->forward();//reuse last dynamic bindings
 	osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1, std::multiplies<int>());
@@ -562,6 +578,7 @@ void inference_engine()
 	printf("\n");
 	delete dbindings;
 	delete runtime;
+	delete ptr;
 }
 
 int main()
