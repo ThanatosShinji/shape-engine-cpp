@@ -185,6 +185,14 @@ namespace simple_inference_engine_f32
 			mShapes.resize(dsize);
 		}
 
+		~RuntimeEngine()
+		{
+			for (int i = 0; i < mLayers.size(); i++)
+			{
+				delete mLayers[i];
+			}
+		}
+
 		void forward_dynamic(DynamicBindings* _bindings)
 		{
 			for (size_t i = 0; i < _bindings->mPtrs.size(); i++)

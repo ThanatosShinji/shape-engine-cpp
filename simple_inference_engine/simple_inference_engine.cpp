@@ -578,7 +578,6 @@ void inference_engine()
 	printf("\n");
 	delete dbindings;
 	delete runtime;
-	delete ptr;
 }
 
 int main()
