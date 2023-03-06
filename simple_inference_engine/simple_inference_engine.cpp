@@ -11,14 +11,27 @@ std::vector<LayerCreator*> LayerFactory::mCreatetors;
 class Conv :public LayerBase
 {
 public:
-	Conv(attr_map_t& attrs)
-		:LayerBase(attrs)
+	Conv(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 		mDilations = attrs["dilations"].mInts;
 		mGroup = attrs["group"].mInts;
 		mKernel = attrs["kernel_shape"].mInts;
 		mPads = attrs["pads"].mInts;
 		mStrides = attrs["strides"].mInts;
+		if (attrs["postop_count"].mInts.size() > 0)
+		{
+			mPostopCount = attrs["postop_count"].mInts[0];
+			for (int i = 0; i < mPostopCount; i++)
+			{
+				std::string key = std::string("postop_") + std::to_string(i);
+				mPostops.push_back(attrs[key].mStrings[0]);
+			}
+		}
+		else
+		{
+			mPostopCount = 0;
+		}
 	}
 
 	void forward() override
@@ -69,8 +82,20 @@ public:
 										auto wval = mWeights[j * mKernel[0] * mKernel[1] * mIC + iy * mKernel[1] * mIC + ix * mIC + icn];
 										tmp += xval * wval;
 									}
-									
+
 								}
+							}
+						}
+						for (int ipost = 0; ipost < mPostopCount; ipost++)
+						{
+							if (std::strcmp(mPostops[ipost].c_str(), "Relu") == 0)
+							{
+								tmp = std::max(0.f, tmp);
+							}
+							if (std::strcmp(mPostops[ipost].c_str(), "Add") == 0)
+							{
+								auto post1ptr = (float*)mInputs[1];
+								tmp += post1ptr[i * batch * mOC * oh * ow + j * oh * ow + k * ow + l];
 							}
 						}
 						yhptr[l] = tmp;
@@ -111,17 +136,18 @@ public:
 		}
 	}
 
-	int mIC, mOC;
+	int mIC, mOC, mPostopCount;
 	std::vector<int> mDilations, mGroup, mKernel, mPads, mStrides;
 	std::vector<float> mWeights, mBias;
+	std::vector<std::string> mPostops;
 };
 REGISTER_LAYER(Conv);
 
 class BatchNormalization :public LayerBase
 {
 public:
-	BatchNormalization(attr_map_t& attrs)
-		:LayerBase(attrs)
+	BatchNormalization(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 		mSpatial = attrs["spatial"].mInts;
 		mEpsilon = attrs["epsilon"].mFloats;
@@ -188,8 +214,8 @@ REGISTER_LAYER(BatchNormalization);
 class Relu :public LayerBase
 {
 public:
-	Relu(attr_map_t& attrs)
-		:LayerBase(attrs)
+	Relu(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 
 	}
@@ -226,8 +252,8 @@ REGISTER_LAYER(Relu);
 class Add :public LayerBase
 {
 public:
-	Add(attr_map_t& attrs)
-		:LayerBase(attrs)
+	Add(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 
 	}
@@ -265,8 +291,8 @@ REGISTER_LAYER(Add);
 class Flatten :public LayerBase
 {
 public:
-	Flatten(attr_map_t& attrs)
-		:LayerBase(attrs)
+	Flatten(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 
 	}
@@ -296,8 +322,8 @@ REGISTER_LAYER(Flatten);
 class MaxPool :public LayerBase
 {
 public:
-	MaxPool(attr_map_t& attrs)
-		:LayerBase(attrs)
+	MaxPool(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 		mKernel = attrs["kernel_shape"].mInts;
 		mPads = attrs["pads"].mInts;
@@ -366,8 +392,8 @@ REGISTER_LAYER(MaxPool);
 class GlobalAveragePool :public LayerBase
 {
 public:
-	GlobalAveragePool(attr_map_t& attrs)
-		:LayerBase(attrs)
+	GlobalAveragePool(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 	}
 
@@ -408,8 +434,8 @@ REGISTER_LAYER(GlobalAveragePool);
 class Gemm :public LayerBase
 {
 public:
-	Gemm(attr_map_t& attrs)
-		:LayerBase(attrs)
+	Gemm(const char* _name, attr_map_t& attrs)
+		:LayerBase(_name, attrs)
 	{
 		mAlpha = attrs["alpha"].mFloats;
 		mBeta = attrs["beta"].mFloats;
@@ -521,7 +547,7 @@ void load_compute_graph()
 
 void inference_engine()
 {
-	const char* filepath = "resnet18.se";
+	const char* filepath = "resnet_fused.se";
 	//Shape engine is very light
 	//Each binding should have its unique shape engine
 	auto engine = onnx_tool::shape_engine::ShapeEngine();
@@ -529,7 +555,7 @@ void inference_engine()
 
 	//Avoid to copy this instance
 	//Graph contains all weights, you dont want multiple copies
-	const char* cfilepath = "resnet18.cg";
+	const char* cfilepath = "resnet_fused.cg";
 	auto ptr = onnx_tool::Graph::deserializeFile(cfilepath);
 
 	//Contruct inference context with compute graph and shape engine
@@ -545,10 +571,10 @@ void inference_engine()
 	//one runtime Engine can only execute one bindings at the same time
 	auto runtime = ctx.createRuntimeEngine();
 
-	auto inputidx=ctx.mDynamicIndexMap["data"];//input tensor
+	auto inputidx = ctx.mDynamicIndexMap["data"];//input tensor
 	auto inputptr = (float*)dbindings->mPtrs[inputidx];//input tensor buffer
 	auto in_shape = dbindings->mShapePtr[inputidx];//input shape pointer
-	auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1,std::multiplies<int>());
+	auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1, std::multiplies<int>());
 	for (int i = 0; i < size; i++)
 	{
 		inputptr[i] = 0.5f;

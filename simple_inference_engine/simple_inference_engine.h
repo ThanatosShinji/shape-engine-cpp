@@ -78,7 +78,7 @@ namespace simple_inference_engine_f32
 	class LayerBase
 	{
 	public:
-		LayerBase(attr_map_t& attrs) {};
+		LayerBase(const char* _name, attr_map_t& attrs):mName(_name) {};
 
 		virtual ~LayerBase()
 		{
@@ -111,11 +111,11 @@ namespace simple_inference_engine_f32
 			mOutputs.resize(osize);
 			mOShapes.resize(osize);
 		}
-
+		std::string mName;
 		std::vector<void**> mInputsRef, mOutputsRef;
 		std::vector<TensorShape*> mIShapesRef, mOShapesRef;
 	protected:
-
+		
 		std::vector<void*> mInputs, mOutputs;
 		std::vector<TensorShape> mIShapes, mOShapes;
 	};
@@ -124,19 +124,19 @@ namespace simple_inference_engine_f32
 	{
 	public:
 		virtual const char* getType() = 0;
-		virtual LayerBase* createLayer(attr_map_t& _attrs) = 0;
+		virtual LayerBase* createLayer(const char* _name, attr_map_t& _attrs) = 0;
 	};
 	class LayerFactory
 	{
 	public:
-		static LayerBase* createLayer(const char* _type, attr_map_t& _attrs)
+		static LayerBase* createLayer(const char* _type, const char* _name, attr_map_t& _attrs)
 		{
 			for (int i = 0; i < mCreatetors.size(); i++)
 			{
 				auto& creator = mCreatetors[i];
 				if (strcmp(creator->getType(),_type)==0)
 				{
-					return creator->createLayer(_attrs);
+					return creator->createLayer(_name,_attrs);
 				}
 			}
 			return nullptr;
@@ -163,9 +163,9 @@ namespace simple_inference_engine_f32
 		{
 			mType = _type;
 		}
-		LayerBase* createLayer(attr_map_t& _attrs) override
+		LayerBase* createLayer(const char* _name,attr_map_t& _attrs) override
 		{
-			return new _T(_attrs);
+			return new _T(_name, _attrs);
 		}
 		virtual const char* getType() override
 		{
@@ -242,7 +242,7 @@ namespace simple_inference_engine_f32
 			for (int i = 0; i < mGraph->mNodes.size(); i++)
 			{
 				auto& node = mGraph->mNodes[i];
-				auto layerptr = LayerFactory::createLayer(node.mOpType.c_str(), node.mAttributes);
+				auto layerptr = LayerFactory::createLayer(node.mOpType.c_str(),node.mName.c_str(),  node.mAttributes);
 				if (layerptr)
 				{
 					std::vector<onnx_tool::Tensor> in_stensors;
