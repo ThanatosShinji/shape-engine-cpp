@@ -152,6 +152,14 @@ public:
 		mSpatial = attrs["spatial"].mInts;
 		mEpsilon = attrs["epsilon"].mFloats;
 		mMomentum = attrs["momentum"].mFloats;
+		if (attrs["postop_count"].mInts.size() > 0)
+		{
+			for (int i = 0; i < attrs["postop_count"].mInts[0]; i++)
+			{
+				std::string key = std::string("postop_") + std::to_string(i);
+				mPostops.push_back(attrs[key].mStrings[0]);
+			}
+		}
 	}
 
 	void forward() override
@@ -178,6 +186,13 @@ public:
 					{
 						auto offset = i * cn * h * w + j * h * w + k * w + l;
 						yptr[offset] = sm * (xptr[offset] - mean) + sv;
+						for (int ipost = 0; ipost < mPostops.size(); ipost++)
+						{
+							if (std::strcmp(mPostops[ipost].c_str(), "Relu") == 0)
+							{
+								yptr[offset] = std::max(0.f, yptr[offset]);
+							}
+						}
 					}
 				}
 			}
@@ -208,6 +223,7 @@ public:
 	std::vector<float> mWeights;
 	std::vector<int> mSpatial;
 	std::vector<float> mEpsilon, mMomentum;
+	std::vector<std::string> mPostops;
 };
 REGISTER_LAYER(BatchNormalization);
 
@@ -545,7 +561,7 @@ void load_compute_graph()
 	delete ptr;
 }
 
-void inference_engine()
+void inference_resnet18()
 {
 	const char* filepath = "resnet_fused.se";
 	//Shape engine is very light
@@ -606,8 +622,60 @@ void inference_engine()
 	delete runtime;
 }
 
+void inference_resnet50()
+{
+	const char* filepath = "resnet50_fused.se";
+	//Shape engine is very light
+	//Each binding should have its unique shape engine
+	auto engine = onnx_tool::shape_engine::ShapeEngine();
+	engine.deserializeFile(filepath);
+
+	//Avoid to copy this instance
+	//Graph contains all weights, you dont want multiple copies
+	const char* cfilepath = "resnet50_fused.cg";
+	auto ptr = onnx_tool::Graph::deserializeFile(cfilepath);
+
+	//Contruct inference context with compute graph and shape engine
+	auto ctx = InferenceContext(ptr, engine);
+
+	//Create one dynamic bindings. bindings means a group of dynamic tensors,
+	//bindings can be parallelly executed on multiple CPU cores.
+	auto dbindings = ctx.createDynamicBindings();
+	auto maxshape = variable_pairs_t{ {"w",224},{"h",224} };
+	dbindings->updateMemory(maxshape);//memory allocation for Maxmimum input shapes
+
+	//Runtime Engine=Op Kernels+static weights
+	//one runtime Engine can only execute one bindings at the same time
+	auto runtime = ctx.createRuntimeEngine();
+
+	auto inputidx = ctx.mDynamicIndexMap["data"];//input tensor
+	auto inputptr = (float*)dbindings->mPtrs[inputidx];//input tensor buffer
+	auto in_shape = dbindings->mShapePtr[inputidx];//input shape pointer
+	auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1, std::multiplies<int>());
+	for (int i = 0; i < size; i++)
+	{
+		inputptr[i] = 0.5f;
+	}
+	printf("\n1x3x224x224\n");
+	runtime->forward_dynamic(dbindings);//inference with this bindings
+
+	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
+	auto outputptr = (float*)dbindings->mPtrs[outputidx];
+	auto out_shape = dbindings->mShapePtr[outputidx];//output shape pointer
+	auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1, std::multiplies<int>());
+	for (int i = 0; i < osize; i++)
+	{
+		printf("%f ", outputptr[i]);
+	}
+	printf("\n");
+
+	delete dbindings;
+	delete runtime;
+}
+
 int main()
 {
-	inference_engine();
+	//inference_resnet18();
+	inference_resnet50();
 	return 0;
 }

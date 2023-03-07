@@ -15,6 +15,7 @@ namespace onnx_tool
 		DTYPE_UINT8 = 6,
 		DTYPE_INT16 = 7,
 		DTYPE_UINT16 = 8,
+		DTYPE_INT64 = 9,
 	};
 
 	template<typename T>
@@ -48,6 +49,7 @@ namespace onnx_tool
 		case DTYPE_STR:
 			return -1;
 		case DTYPE_DOUBLE:
+		case DTYPE_INT64:
 			return 8;
 		case DTYPE_INT8:
 		case DTYPE_UINT8:
