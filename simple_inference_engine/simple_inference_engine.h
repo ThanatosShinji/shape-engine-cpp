@@ -5,18 +5,42 @@
 
 #include "shape_engine.h"
 #include "graph.h"
-
+#include <chrono>
 
 namespace simple_inference_engine_f32
 {
 	typedef std::vector<std::pair<std::string, int>> variable_pairs_t;
 	typedef onnx_tool::shape_engine::ShapeEngine shape_engine_t;
+	typedef onnx_tool::shape_engine::TensorShape tensor_shape_t;
 	typedef std::unordered_map<std::string, onnx_tool::Attribute> attr_map_t;
-	struct TensorShape
+
+	class TimeRecorder
 	{
-		int n;
-		int* ptr;
+	public:
+		using clk_t = std::chrono::steady_clock;
+		TimeRecorder()
+		{
+		}
+
+		void record_start(void* stream=0)
+		{
+			mStart = clk_t::now();
+		}
+
+		void record_end(void* stream=0)
+		{
+			mEnd = clk_t::now();
+		}
+
+		float elapsed_time()
+		{
+			float t = (mEnd - mStart).count() / 1e6;
+			return t;
+		}
+		clk_t::time_point mStart, mEnd;
 	};
+
+
 	class DynamicBindings
 	{
 	public:
@@ -71,10 +95,10 @@ namespace simple_inference_engine_f32
 
 		shape_engine_t mShapeEngine;
 		std::vector<void*> mPtrs;
-		std::vector<TensorShape> mShapePtr;
+		std::vector<tensor_shape_t> mShapePtr;
 		std::vector<char> mBuffer;
 		std::vector<std::vector<void*>> mLayerInPtr, mLayerOutPtr;
-		std::vector<std::vector<TensorShape>> mLayerInShape, mLayerOutShape;
+		std::vector<std::vector<tensor_shape_t>> mLayerInShape, mLayerOutShape;
 	};
 
 	class LayerBase
@@ -86,10 +110,12 @@ namespace simple_inference_engine_f32
 		{
 		}
 
-		virtual void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) = 0;
+		virtual void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) = 0;
 
 		virtual void setweights(std::vector<onnx_tool::Tensor>& tensors) = 0;
 
+		TimeRecorder mRecoder;
+		std::string mOp;
 		std::string mName;
 	};
 
@@ -138,7 +164,9 @@ namespace simple_inference_engine_f32
 		}
 		LayerBase* createLayer(const char* _name, attr_map_t& _attrs) override
 		{
-			return new _T(_name, _attrs);
+			auto ptr = new _T(_name, _attrs);
+			ptr->mOp = mType;
+			return ptr;
 		}
 		virtual const char* getType() override
 		{
@@ -166,12 +194,35 @@ namespace simple_inference_engine_f32
 
 		void forward(DynamicBindings* _bindings)
 		{
+			if (mProfile)
+				mRecorder.record_start();
 			for (int i = 0; i < mLayers.size(); i++)
 			{
+				if (mProfile)
+					mLayers[i]->mRecoder.record_start();
 				mLayers[i]->forward(_bindings->mLayerInPtr[i], _bindings->mLayerInShape[i], _bindings->mLayerOutPtr[i], _bindings->mLayerOutShape[i]);
+				if (mProfile)
+					mLayers[i]->mRecoder.record_end();
 			}
+			if (mProfile)
+				mRecorder.record_end();
+		}
+
+		void save_proflie(const char* _file)
+		{
+			FILE* fp = fopen(_file, "w");
+			fprintf(fp, "Name,Type,TimeMs\n");
+			for (int i = 0; i < mLayers.size(); i++)
+			{
+				fprintf(fp, "%s,%s,%f\n", mLayers[i]->mName.c_str(), mLayers[i]->mOp.c_str()
+					, mLayers[i]->mRecoder.elapsed_time());
+			}
+			fprintf(fp, "Total,_,%f\n", mRecorder.elapsed_time());
+			fclose(fp);
 		}
 		std::vector<LayerBase*> mLayers;
+		bool mProfile;
+		TimeRecorder mRecorder;
 	};
 
 	class InferenceContext

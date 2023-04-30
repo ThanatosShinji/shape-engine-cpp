@@ -34,7 +34,7 @@ public:
 		}
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -162,7 +162,7 @@ public:
 		}
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -236,7 +236,7 @@ public:
 
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -274,7 +274,7 @@ public:
 
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -313,7 +313,7 @@ public:
 
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -346,7 +346,7 @@ public:
 		mStrides = attrs["strides"].mInts;
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -413,7 +413,7 @@ public:
 	{
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -459,7 +459,7 @@ public:
 		mTransB = attrs["transB"].mInts;
 	}
 
-	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
+	void forward(std::vector<void*>& mInputs, std::vector<tensor_shape_t>& mIShapes, std::vector<void*>& mOutputs, std::vector<tensor_shape_t>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -643,6 +643,9 @@ void inference_resnet50()
 	//one runtime Engine can only execute one bindings at the same time
 	auto runtime = ctx.createRuntimeEngine();
 
+	//Done with createDynamicBindings and createRuntimeEngine, you can release Graph to save memory space.
+	ctx.mGraph.reset(nullptr);
+
 	auto inputidx = ctx.mDynamicIndexMap["data"];//input tensor
 	auto inputptr = (float*)dbindings->mPtrs[inputidx];//input tensor buffer
 	auto in_shape = dbindings->mShapePtr[inputidx];//input shape pointer
@@ -652,8 +655,9 @@ void inference_resnet50()
 		inputptr[i] = 0.5f;
 	}
 	printf("\n1x3x224x224\n");
+	runtime->mProfile = true;
 	runtime->forward(dbindings);//inference with this bindings
-
+	runtime->save_proflie("test.csv");
 	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
 	auto out_shape = dbindings->mShapePtr[outputidx];//output shape pointer

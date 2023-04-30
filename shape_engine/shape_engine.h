@@ -11,6 +11,12 @@ namespace onnx_tool
 {
 	namespace shape_engine
 	{
+		struct TensorShape
+		{
+			int n;
+			int* ptr;
+		};
+
 		class ValueExpr
 		{
 		public:
