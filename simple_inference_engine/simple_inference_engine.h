@@ -22,12 +22,12 @@ namespace simple_inference_engine_f32
 		{
 		}
 
-		void record_start(void* stream=0)
+		void record_start(void* stream = 0)
 		{
 			mStart = clk_t::now();
 		}
 
-		void record_end(void* stream=0)
+		void record_end(void* stream = 0)
 		{
 			mEnd = clk_t::now();
 		}
@@ -39,7 +39,6 @@ namespace simple_inference_engine_f32
 		}
 		clk_t::time_point mStart, mEnd;
 	};
-
 
 	class DynamicBindings
 	{
@@ -125,6 +124,7 @@ namespace simple_inference_engine_f32
 		virtual const char* getType() = 0;
 		virtual LayerBase* createLayer(const char* _name, attr_map_t& _attrs) = 0;
 	};
+
 	class LayerFactory
 	{
 	public:
@@ -152,7 +152,6 @@ namespace simple_inference_engine_f32
 			LayerFactory::mCreatetors.push_back(new _T(_type));
 		}
 	};
-
 
 	template<typename _T>
 	class LayerCreatorT :public LayerCreator
@@ -265,7 +264,7 @@ namespace simple_inference_engine_f32
 			return engine;
 		}
 
-		DynamicBindings* createDynamicBindings(const variable_pairs_t & max_shape)
+		DynamicBindings* createDynamicBindings(const variable_pairs_t& max_shape)
 		{
 			auto ptr = new DynamicBindings(mShapeEngine);
 			ptr->updateMemory(max_shape);
