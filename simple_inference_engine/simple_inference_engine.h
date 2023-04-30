@@ -25,7 +25,7 @@ namespace simple_inference_engine_f32
 			mShapeEngine = _engine;
 		}
 
-		void reshape(variable_pairs_t& _variables)
+		void reshape(const variable_pairs_t& _variables)
 		{
 			for (size_t i = 0; i < _variables.size(); i++)
 			{
@@ -35,7 +35,7 @@ namespace simple_inference_engine_f32
 			mShapeEngine.update_variables();
 		}
 
-		void updateMemory(variable_pairs_t& _maxvariable)
+		void updateMemory(const variable_pairs_t& _maxvariable)
 		{
 			reshape(_maxvariable);
 			auto dtensor_count = mShapeEngine.mDynamicTensors.size();
@@ -73,51 +73,24 @@ namespace simple_inference_engine_f32
 		std::vector<void*> mPtrs;
 		std::vector<TensorShape> mShapePtr;
 		std::vector<char> mBuffer;
+		std::vector<std::vector<void*>> mLayerInPtr, mLayerOutPtr;
+		std::vector<std::vector<TensorShape>> mLayerInShape, mLayerOutShape;
 	};
 
 	class LayerBase
 	{
 	public:
-		LayerBase(const char* _name, attr_map_t& attrs):mName(_name) {};
+		LayerBase(const char* _name, attr_map_t& attrs) :mName(_name) {};
 
 		virtual ~LayerBase()
 		{
+		}
 
-		}
-		virtual void forward_dynamic()
-		{
-			for (int i = 0; i < mInputs.size(); i++)
-			{
-				mInputs[i] = *mInputsRef[i];
-				mIShapes[i] = *mIShapesRef[i];
-			}
-			for (int i = 0; i < mOutputs.size(); i++)
-			{
-				mOutputs[i] = *mOutputsRef[i];
-				mOShapes[i] = *mOShapesRef[i];
-			}
-			forward();
-		}
-		virtual void forward() = 0;
+		virtual void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) = 0;
 
 		virtual void setweights(std::vector<onnx_tool::Tensor>& tensors) = 0;
 
-		virtual void update()
-		{
-			auto isize = mInputsRef.size();
-			auto osize = mOutputsRef.size();
-			mInputs.resize(isize);
-			mIShapes.resize(isize);
-			mOutputs.resize(osize);
-			mOShapes.resize(osize);
-		}
 		std::string mName;
-		std::vector<void**> mInputsRef, mOutputsRef;
-		std::vector<TensorShape*> mIShapesRef, mOShapesRef;
-	protected:
-		
-		std::vector<void*> mInputs, mOutputs;
-		std::vector<TensorShape> mIShapes, mOShapes;
 	};
 
 	class LayerCreator
@@ -134,9 +107,9 @@ namespace simple_inference_engine_f32
 			for (int i = 0; i < mCreatetors.size(); i++)
 			{
 				auto& creator = mCreatetors[i];
-				if (strcmp(creator->getType(),_type)==0)
+				if (strcmp(creator->getType(), _type) == 0)
 				{
-					return creator->createLayer(_name,_attrs);
+					return creator->createLayer(_name, _attrs);
 				}
 			}
 			return nullptr;
@@ -156,14 +129,14 @@ namespace simple_inference_engine_f32
 
 
 	template<typename _T>
-	class LayerCreatorT:public LayerCreator
+	class LayerCreatorT :public LayerCreator
 	{
 	public:
 		LayerCreatorT(const char* _type)
 		{
 			mType = _type;
 		}
-		LayerBase* createLayer(const char* _name,attr_map_t& _attrs) override
+		LayerBase* createLayer(const char* _name, attr_map_t& _attrs) override
 		{
 			return new _T(_name, _attrs);
 		}
@@ -179,10 +152,8 @@ namespace simple_inference_engine_f32
 	class RuntimeEngine
 	{
 	public:
-		RuntimeEngine(int dsize)
+		RuntimeEngine()
 		{
-			mMemptrs.resize(dsize);
-			mShapes.resize(dsize);
 		}
 
 		~RuntimeEngine()
@@ -193,39 +164,20 @@ namespace simple_inference_engine_f32
 			}
 		}
 
-		void forward_dynamic(DynamicBindings* _bindings)
-		{
-			for (size_t i = 0; i < _bindings->mPtrs.size(); i++)
-			{
-				mMemptrs[i] = _bindings->mPtrs[i];
-			}
-			for (size_t i = 0; i < _bindings->mShapePtr.size(); i++)
-			{
-				mShapes[i] = _bindings->mShapePtr[i];
-			}
-			for (int i = 0; i < mLayers.size(); i++)
-			{
-				mLayers[i]->forward_dynamic();
-			}
-		}
-
-		void forward()
+		void forward(DynamicBindings* _bindings)
 		{
 			for (int i = 0; i < mLayers.size(); i++)
 			{
-				mLayers[i]->forward();
+				mLayers[i]->forward(_bindings->mLayerInPtr[i], _bindings->mLayerInShape[i], _bindings->mLayerOutPtr[i], _bindings->mLayerOutShape[i]);
 			}
 		}
-
-		std::vector<void*> mMemptrs;
-		std::vector<TensorShape> mShapes;
 		std::vector<LayerBase*> mLayers;
 	};
 
 	class InferenceContext
 	{
 	public:
-		InferenceContext(onnx_tool::Graph* graph,shape_engine_t& _engine)
+		InferenceContext(onnx_tool::Graph* graph, shape_engine_t& _engine)
 		{
 			mGraph.reset(graph);
 			mShapeEngine = _engine;
@@ -237,56 +189,71 @@ namespace simple_inference_engine_f32
 
 		RuntimeEngine* createRuntimeEngine()
 		{
-			auto engine = new RuntimeEngine(mShapeEngine.mDynamicTensors.size());
+			auto engine = new RuntimeEngine();
 			engine->mLayers.resize(mGraph->mNodes.size());
 			for (int i = 0; i < mGraph->mNodes.size(); i++)
 			{
 				auto& node = mGraph->mNodes[i];
-				auto layerptr = LayerFactory::createLayer(node.mOpType.c_str(),node.mName.c_str(),  node.mAttributes);
+				auto layerptr = LayerFactory::createLayer(node.mOpType.c_str(), node.mName.c_str(), node.mAttributes);
 				if (layerptr)
 				{
 					std::vector<onnx_tool::Tensor> in_stensors;
-					auto& in_dptrs = layerptr->mInputsRef;
-					auto& outdptrs = layerptr->mOutputsRef;
-					auto& in_shapes = layerptr->mIShapesRef;
-					auto& out_shapes = layerptr->mOShapesRef;
 					for (int iin = 0; iin < node.mInputNames.size(); iin++)
 					{
 						auto name = node.mInputNames[iin];
 						auto iter = mDynamicIndexMap.find(name);
-						if (iter != mDynamicIndexMap.end())
-						{
-							auto indx = mDynamicIndexMap[name];
-							in_dptrs.push_back(&engine->mMemptrs[indx]);
-							in_shapes.push_back(&engine->mShapes[indx]);
-						}
-						else
+						if (iter == mDynamicIndexMap.end())
 						{
 							in_stensors.push_back(mGraph->mTensorMap[name]);
 						}
 					}
-					for (int iout = 0; iout < node.mOutputNames.size(); iout++)
-					{
-						auto name = node.mOutputNames[iout];
-						auto iter = mDynamicIndexMap.find(name);
-						if (iter != mDynamicIndexMap.end())
-						{
-							auto indx = mDynamicIndexMap[name];
-							outdptrs.push_back(&engine->mMemptrs[indx]);
-							out_shapes.push_back(&engine->mShapes[indx]);
-						}
-					}
 					layerptr->setweights(in_stensors);
-					layerptr->update();
 				}
 				engine->mLayers[i] = layerptr;
 			}
 			return engine;
 		}
 
-		DynamicBindings* createDynamicBindings()
+		DynamicBindings* createDynamicBindings(const variable_pairs_t & max_shape)
 		{
-			return new DynamicBindings(mShapeEngine);
+			auto ptr = new DynamicBindings(mShapeEngine);
+			ptr->updateMemory(max_shape);
+			auto layercount = mGraph->mNodes.size();
+			ptr->mLayerInPtr.resize(layercount);
+			ptr->mLayerOutPtr.resize(layercount);
+			ptr->mLayerInShape.resize(layercount);
+			ptr->mLayerOutShape.resize(layercount);
+			for (int i = 0; i < mGraph->mNodes.size(); i++)
+			{
+				auto& node = mGraph->mNodes[i];
+				auto& in_dptrs = ptr->mLayerInPtr[i];
+				auto& out_dptrs = ptr->mLayerOutPtr[i];
+				auto& in_shapes = ptr->mLayerInShape[i];
+				auto& out_shapes = ptr->mLayerOutShape[i];
+				for (int iin = 0; iin < node.mInputNames.size(); iin++)
+				{
+					auto name = node.mInputNames[iin];
+					auto iter = mDynamicIndexMap.find(name);
+					if (iter != mDynamicIndexMap.end())
+					{
+						auto indx = mDynamicIndexMap[name];
+						in_dptrs.push_back(ptr->mPtrs[indx]);
+						in_shapes.push_back(ptr->mShapePtr[indx]);
+					}
+				}
+				for (int iout = 0; iout < node.mOutputNames.size(); iout++)
+				{
+					auto name = node.mOutputNames[iout];
+					auto iter = mDynamicIndexMap.find(name);
+					if (iter != mDynamicIndexMap.end())
+					{
+						auto indx = mDynamicIndexMap[name];
+						out_dptrs.push_back(ptr->mPtrs[indx]);
+						out_shapes.push_back(ptr->mShapePtr[indx]);
+					}
+				}
+			}
+			return ptr;
 		}
 		shape_engine_t mShapeEngine;
 		std::unordered_map<std::string, int> mDynamicIndexMap;

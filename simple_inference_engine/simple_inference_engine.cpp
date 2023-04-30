@@ -34,7 +34,7 @@ public:
 		}
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -162,7 +162,7 @@ public:
 		}
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -236,7 +236,7 @@ public:
 
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -274,7 +274,7 @@ public:
 
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -313,7 +313,7 @@ public:
 
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -346,7 +346,7 @@ public:
 		mStrides = attrs["strides"].mInts;
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -413,7 +413,7 @@ public:
 	{
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -459,7 +459,7 @@ public:
 		mTransB = attrs["transB"].mInts;
 	}
 
-	void forward() override
+	void forward(std::vector<void*>& mInputs, std::vector<TensorShape>& mIShapes, std::vector<void*>& mOutputs, std::vector<TensorShape>& mOShapes) override
 	{
 		auto xptr = (float*)mInputs[0];
 		auto xshape = mIShapes[0];
@@ -579,9 +579,7 @@ void inference_resnet18()
 
 	//Create one dynamic bindings. bindings means a group of dynamic tensors,
 	//bindings can be parallelly executed on multiple CPU cores.
-	auto dbindings = ctx.createDynamicBindings();
-	auto maxshape = variable_pairs_t{ {"w",224},{"h",224} };
-	dbindings->updateMemory(maxshape);//memory allocation for Maxmimum input shapes
+	auto dbindings = ctx.createDynamicBindings({ {"w",224},{"h",224} });
 
 	//Runtime Engine=Op Kernels+static weights
 	//one runtime Engine can only execute one bindings at the same time
@@ -596,7 +594,7 @@ void inference_resnet18()
 		inputptr[i] = 0.5f;
 	}
 	printf("\n1x3x224x224\n");
-	runtime->forward_dynamic(dbindings);//inference with this bindings
+	runtime->forward(dbindings);//inference with this bindings
 
 	auto outputidx = ctx.mDynamicIndexMap["resnetv15_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
@@ -608,10 +606,9 @@ void inference_resnet18()
 	}
 	printf("\n");
 
-	auto newshape = variable_pairs_t{ {"w",112},{"h",122} };
-	dbindings->reshape(newshape);//all shapes in this bindings will be updated
+	dbindings->reshape({ {"w",112},{"h",122} });//all shapes in this bindings will be updated
 	printf("\n1x3x112x122\n");
-	runtime->forward();//reuse last dynamic bindings
+	runtime->forward(dbindings);
 	osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1, std::multiplies<int>());
 	for (int i = 0; i < osize; i++)
 	{
@@ -640,9 +637,7 @@ void inference_resnet50()
 
 	//Create one dynamic bindings. bindings means a group of dynamic tensors,
 	//bindings can be parallelly executed on multiple CPU cores.
-	auto dbindings = ctx.createDynamicBindings();
-	auto maxshape = variable_pairs_t{ {"w",224},{"h",224} };
-	dbindings->updateMemory(maxshape);//memory allocation for Maxmimum input shapes
+	auto dbindings = ctx.createDynamicBindings({ {"w",224},{"h",224} });
 
 	//Runtime Engine=Op Kernels+static weights
 	//one runtime Engine can only execute one bindings at the same time
@@ -657,7 +652,7 @@ void inference_resnet50()
 		inputptr[i] = 0.5f;
 	}
 	printf("\n1x3x224x224\n");
-	runtime->forward_dynamic(dbindings);//inference with this bindings
+	runtime->forward(dbindings);//inference with this bindings
 
 	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
