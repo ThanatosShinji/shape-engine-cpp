@@ -176,7 +176,7 @@ public:
 		{
 			for (int j = 0; j < cn; j++)
 			{
-				auto sqrt_variance = std::sqrtf(varptr[j] + mEpsilon[0]);
+				auto sqrt_variance = std::sqrt(varptr[j] + mEpsilon[0]);
 				auto sm = gammaptr[j] / sqrt_variance;
 				auto sv = betaptr[j];
 				auto mean = meanptr[j];

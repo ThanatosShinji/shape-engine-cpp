@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <cmath>
 #include "common.h"
 
 namespace onnx_tool
@@ -53,11 +54,11 @@ namespace onnx_tool
 				}
 				if (mTrunc == 0)
 				{
-					return ceil(y);
+					return std::ceil(y);
 				}
 				else
 				{
-					return floor(y);
+					return std::floor(y);
 				}
 			}
 			std::string mSrcVariable, mTarVariable;

@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <string>
+#include <cstring>
 
 namespace onnx_tool
 {
@@ -31,7 +32,7 @@ namespace onnx_tool
 	{
 		auto ptr = (const char*)buf;
 		*val = ptr;
-		buf = buf + strlen(ptr) + 1;
+		buf = buf + std::strlen(ptr) + 1;
 	}
 
 	template<>
@@ -39,7 +40,7 @@ namespace onnx_tool
 	{
 		auto ptr = (char*)buf;
 		*val = ptr;
-		buf = buf + strlen(ptr) + 1;
+		buf = buf + std::strlen(ptr) + 1;
 	}
 
 	inline int GetEleSize(DType _dtype)
