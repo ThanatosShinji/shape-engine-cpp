@@ -76,11 +76,11 @@ public:
 		int w = xshape.ptr[3];
 		int oh = yshape.ptr[2];
 		int ow = yshape.ptr[3];
-		if (mKernel[0]==1&&mOC%32==0)
+		/*if (mKernel[0]==1&&mOC%32==0)
 		{
 			cudaConv2D_k1(xptr, mDWeights.data(), mDBias.data(), batch, mIC, h, w, 1, yptr, mOC, oh, ow, mOC, mAct, _stream);
 			return;
-		}
+		}*/
 		cudnnSetTensor4dDescriptor(xDesc, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, cudnnDataType_t::CUDNN_DATA_FLOAT, batch, mIC, h, w);
 		cudnnSetTensor4dDescriptor(yDesc, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, cudnnDataType_t::CUDNN_DATA_FLOAT, batch, mOC, oh, ow);
 		cudnnSetTensor4dDescriptor(zDesc, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, cudnnDataType_t::CUDNN_DATA_FLOAT, batch, mOC, oh, ow);
