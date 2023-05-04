@@ -65,6 +65,11 @@ void inference_resnet50()
 			printf("%s Time:%f\n", print_layer, runtime->mLayers[i]->mRecoder.elapsed_time());
 		}
 	}
+
+	dbindings->reshape({ {"h",384 }, { "w",384 } });
+	runtime->forward(dbindings);
+	dbindings->sync();
+	runtime->save_proflie("test384.csv");
 	delete dbindings;
 	delete runtime;
 }

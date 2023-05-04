@@ -103,6 +103,7 @@ void inference_resnet50()
 		runtime->forward(dbindings);//inference with this bindings
 	}
 	runtime->save_proflie("test.csv");
+
 	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
 	auto out_shape = dbindings->mShapePtr[outputidx];//output shape pointer
@@ -113,6 +114,9 @@ void inference_resnet50()
 	}
 	printf("\n");
 
+	dbindings->reshape({ {"h",112 }, { "w",112 } });
+	runtime->forward(dbindings);
+	runtime->save_proflie("test112.csv");
 	delete dbindings;
 	delete runtime;
 }
