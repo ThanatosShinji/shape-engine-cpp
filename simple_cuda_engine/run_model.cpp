@@ -23,8 +23,12 @@ void inference_resnet50()
 	//bindings can be parallelly executed on multiple CPU cores.
 	auto dbindings = ctx.createDynamicBindings({ {"w",224},{"h",224} });
 
+	//Create another bindings. each bindings has one CUDA stream
+	auto dbindings1 = ctx.createDynamicBindings({ {"w",224},{"h",224} });
+
+
 	//Runtime Engine=Op Kernels+static weights
-	//one runtime Engine can only execute one bindings at the same time
+	//one runtime Engine can execute multiple bindings at the same time
 	auto runtime = ctx.createRuntimeEngine();
 
 	//Done with createDynamicBindings and createRuntimeEngine, you can release Graph to save memory space.
@@ -32,22 +36,25 @@ void inference_resnet50()
 
 	auto inputidx = ctx.mDynamicIndexMap["data"];//input tensor
 	auto inputptr = (float*)dbindings->mPtrs[inputidx];//input tensor buffer
+	auto inputptr1 = (float*)dbindings1->mPtrs[inputidx];//input tensor buffer
 	auto in_shape = dbindings->mShapePtr[inputidx];//input shape pointer
 	auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1, std::multiplies<int>());
 	std::vector<float> testinput(size, 0.5f);
 	cudaMemcpy(inputptr, testinput.data(), testinput.size() * 4, cudaMemcpyHostToDevice);
+	cudaMemcpy(inputptr1, testinput.data(), testinput.size() * 4, cudaMemcpyHostToDevice);
 
 	printf("\n1x3x224x224\n");
 	runtime->mProfile = true;
 	for (int i = 0; i < 10; i++)
 	{
-		runtime->forward(dbindings);//inference with this bindings
-		dbindings->sync();
+		runtime->forward(dbindings);//async inference with this bindings
+		dbindings->sync();//CUDA sync
 	}
 
 	runtime->save_proflie("test.csv");
 	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
+	auto outputptr1 = (float*)dbindings1->mPtrs[outputidx];
 	auto out_shape = dbindings->mShapePtr[outputidx];//output shape pointer
 	auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1, std::multiplies<int>());
 	auto testoutput = cuda2Vec(outputptr, osize);
@@ -65,11 +72,30 @@ void inference_resnet50()
 			printf("%s Time:%f\n", print_layer, runtime->mLayers[i]->mRecoder.elapsed_time());
 		}
 	}
-
-	dbindings->reshape({ {"h",384 }, { "w",384 } });
+	//async inference two bindings at the same time
+	runtime->forward(dbindings);
+	runtime->forward(dbindings1);
+	dbindings->sync();
+	dbindings1->sync();
+	printf("First Binding:\n");
+	auto host_b0 = cuda2Vec(outputptr, osize);
+	for (int i = 0; i < osize; i++)
+	{
+		printf("%f ", host_b0[i]);
+	}
+	printf("\n");
+	printf("Second Binding:\n");
+	auto host_b1 = cuda2Vec(outputptr1, osize);
+	for (int i = 0; i < osize; i++)
+	{
+		printf("%f ", host_b1[i]);
+	}
+	printf("\n");
+	//dynamic input shape inference
+	dbindings->reshape({ {"h",112 }, { "w",112 } });
 	runtime->forward(dbindings);
 	dbindings->sync();
-	runtime->save_proflie("test384.csv");
+	runtime->save_proflie("test112.csv");
 	delete dbindings;
 	delete runtime;
 }
