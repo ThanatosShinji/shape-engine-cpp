@@ -1,4 +1,4 @@
-<a href="README_CN.md"> ¼òÌåÖĞÎÄ </a>
+<a href="README_CN.md">ç®€ä½“ä¸­æ–‡</a>
 # `shape-engine-cpp`
 
 A tiny inference sample with onnx-tool's compute graph and shape engine.  It implements cpp version of onnx-tool's compute graph and shape engine loader.   
