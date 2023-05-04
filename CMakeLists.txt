@@ -9,3 +9,5 @@ project ("shape_engine_cpp")
 add_subdirectory ("shape_engine")
 
 add_subdirectory("simple_inference_engine")
+
+add_subdirectory("simple_cuda_engine")

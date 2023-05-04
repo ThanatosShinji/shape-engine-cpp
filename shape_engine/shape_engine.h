@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <string>
 #include <cmath>
+#include <numeric>
+#include <functional>
 #include "common.h"
 
 namespace onnx_tool
@@ -17,6 +19,13 @@ namespace onnx_tool
 			int n;
 			int* ptr;
 		};
+
+		static inline size_t shape_size(TensorShape& _shape)
+		{
+			size_t _s = 1;
+			_s = std::accumulate(_shape.ptr, _shape.ptr + _shape.n, _s, std::multiplies<int>());
+			return _s;
+		}
 
 		class ValueExpr
 		{

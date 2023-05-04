@@ -98,7 +98,10 @@ void inference_resnet50()
 	}
 	printf("\n1x3x224x224\n");
 	runtime->mProfile = true;
-	runtime->forward(dbindings);//inference with this bindings
+	for (int i = 0; i < 10; i++)
+	{
+		runtime->forward(dbindings);//inference with this bindings
+	}
 	runtime->save_proflie("test.csv");
 	auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"];//output tensor
 	auto outputptr = (float*)dbindings->mPtrs[outputidx];
