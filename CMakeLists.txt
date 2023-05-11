@@ -10,4 +10,6 @@ add_subdirectory ("shape_engine")
 
 add_subdirectory("simple_inference_engine")
 
-add_subdirectory("simple_cuda_engine")
+#add_subdirectory("simple_cuda_engine")
+
+add_subdirectory("simple_sycl_engine")

@@ -30,6 +30,23 @@
       }
     },
     {
+      "name": "x64-debug-sycl",
+      "displayName": "x64 Debug SYCL",
+      "inherits": "x64-debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "icx",
+        "CMAKE_C_COMPILER": "icx"
+      }
+    },
+    {
+      "name": "x64-release-sycl",
+      "displayName": "x64 Release SYCL",
+      "inherits": "x64-debug-sycl",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "x64-release",
       "displayName": "x64 Release",
       "inherits": "x64-debug",
@@ -51,26 +68,6 @@
       "inherits": "x64-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "MinSizeRel"
-      }
-    },
-    {
-      "name": "x86-debug",
-      "displayName": "x86 Debug",
-      "inherits": "windows-base",
-      "architecture": {
-        "value": "x86",
-        "strategy": "external"
-      },
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "x86-release",
-      "displayName": "x86 Release",
-      "inherits": "x86-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ]
