@@ -30,12 +30,26 @@
       }
     },
     {
+      "name": "x64-debug-CUDA",
+      "displayName": "x64 Debug CUDA",
+      "inherits": "windows-base",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_CUDA": "ON"
+      }
+    },
+    {
       "name": "x64-debug-sycl",
       "displayName": "x64 Debug SYCL",
       "inherits": "x64-debug",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "icx",
-        "CMAKE_C_COMPILER": "icx"
+        "CMAKE_C_COMPILER": "icx",
+        "ENABLE_SYCL": "ON"
       }
     },
     {

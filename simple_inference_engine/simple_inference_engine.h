@@ -152,7 +152,6 @@ public:
   }
 
   shape_engine_t mShapeEngine;
-  std::unordered_map<std::string, int> mMaxVariables;
   std::vector<void *> mPtrs;
   std::vector<tensor_shape_t> mShapePtr;
   std::vector<char> mStaticBuffer;
@@ -162,6 +161,7 @@ public:
   std::vector<TimeRecorder> mLayerRecorder;
   TimeRecorder mTotalRecorder;
   bool mProfile;
+  std::unordered_map<std::string, int> mMaxVariables;
 };
 
 class LayerBase {
@@ -293,7 +293,7 @@ public:
     return engine;
   }
 
-  void updateDynamicBindgins(DynamicBindings *ptr) {
+  void updateDynamicBindings(DynamicBindings *ptr) {
     auto layercount = mGraph->mNodes.size();
     ptr->mLayerRecorder.resize(layercount);
     ptr->mLayerInPtr.resize(layercount);
@@ -327,14 +327,15 @@ public:
     }
   }
 
-  DynamicBindings *createDynamicBindings(const variable_pairs_t &max_shape, bool profile,
+  DynamicBindings *
+  createDynamicBindings(const variable_pairs_t &max_shape, bool profile,
                         const std::vector<std::string> &keep_tnames = {}) {
     auto ptr = new DynamicBindings(mShapeEngine, profile);
     ptr->updateMaxShape(max_shape);
     ptr->updateMemory(max_shape);
     auto indice = tensorName2Index(keep_tnames);
     ptr->addTensorMemory(indice);
-    updateDynamicBindgins(ptr);
+    updateDynamicBindings(ptr);
     return ptr;
   }
 
@@ -347,11 +348,11 @@ public:
     ptr->reshape(mem_map.get_max_shape());
     auto indice = tensorName2Index(keep_tnames);
     ptr->addTensorMemory(indice);
-    updateDynamicBindgins(ptr);
+    updateDynamicBindings(ptr);
     return ptr;
   }
 
-  std::vector<int> tensorName2Index(const std::vector<std::string>& _names) {
+  std::vector<int> tensorName2Index(const std::vector<std::string> &_names) {
     std::vector<int> indice(_names.size());
     for (size_t i = 0; i < _names.size(); i++) {
       indice[i] = mDynamicIndexMap[_names[i]];
