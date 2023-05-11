@@ -105,6 +105,7 @@ void inference_resnet50() {
   runtime->save_proflie("test112.csv", dbindings);
 
   delete dbindings;
+  delete dbindings1;
   delete runtime;
 }
 
