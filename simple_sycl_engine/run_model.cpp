@@ -66,12 +66,12 @@ void inference_resnet50() {
   runtime->save_proflie("test.csv", dbindings);
   auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"]; // output
                                                                  // tensor
-  auto outputptr = dbindings->mPtrs[outputidx];
+  auto outputptr = (float *)dbindings->mPtrs[outputidx];
+  auto outputptr1 = (float *)dbindings1->mPtrs[outputidx];
   auto out_shape = dbindings->mShapePtr[outputidx]; // output shape pointer
   auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1,
                                std::multiplies<int>());
-  std::vector<float> hostOut(osize, 0.f);
-  dbindings->mQueue.memcpy(hostOut.data(), outputptr, osize * 4).wait();
+  std::vector<float> hostOut = sycl2Vec(outputptr, osize, dbindings->mQueue);
   for (int i = 0; i < osize; i++) {
     printf("%f ", hostOut[i]);
   }
@@ -84,6 +84,18 @@ void inference_resnet50() {
   dbindings1->sync();
   runtime->save_proflie("test_1.csv", dbindings);
   runtime->save_proflie("test_2.csv", dbindings1);
+  std::vector<float> hostOut1 = sycl2Vec(outputptr, osize, dbindings->mQueue);
+  std::vector<float> hostOut2 = sycl2Vec(outputptr1, osize, dbindings->mQueue);
+  printf("First Binding:\n");
+  for (int i = 0; i < osize; i++) {
+    printf("%f ", hostOut1[i]);
+  }
+  printf("\n");
+  printf("Second Binding:\n");
+  for (int i = 0; i < osize; i++) {
+    printf("%f ", hostOut2[i]);
+  }
+  printf("\n");
 
   // dynamic inference case
   dbindings->reshape({{"h", 112}, {"w", 112}});

@@ -39,6 +39,14 @@ template <typename _T> struct sycl_vector {
   uint64_t mSize;
 };
 
+template <typename T>
+__inline__ std::vector<T> sycl2Vec(const T *syclptr, int elecount,
+                                   sycl::queue q) {
+  std::vector<T> tmp(elecount);
+  q.memcpy(tmp.data(), syclptr, elecount * sizeof(T)).wait();
+  return tmp;
+}
+
 class SyclEvent {
 public:
   using clk_t = std::chrono::steady_clock;
@@ -173,7 +181,7 @@ public:
       mShapePtr[i] = {n, sptr};
     }
     if (mTotalMem > mBuffer.size()) {
-      mBuffer.resize(mTotalMem);
+      mBuffer.resize(mTotalMem, mQueue);
     }
     auto ptr = mBuffer.data();
     for (int i = 0; i < mShapeEngine.mDynamicTensors.size(); i++) {
@@ -201,7 +209,7 @@ public:
       mTotalMem += sum;
       memsize.push_back(sum);
     }
-    mStaticBuffer.resize(mTotalMem);
+    mStaticBuffer.resize(mTotalMem, mQueue);
     auto ptr = mStaticBuffer.data();
     for (int i = 0; i < memsize.size(); i++) {
       mPtrs[indice[i]] = ptr;
@@ -212,13 +220,14 @@ public:
   shape_engine_t mShapeEngine;
   std::vector<void *> mPtrs;
   std::vector<tensor_shape_t> mShapePtr;
-  std::vector<char> mStaticBuffer;
+  sycl_vector<char> mStaticBuffer;
   sycl_vector<char> mBuffer;
   std::vector<std::vector<void *>> mLayerInPtr, mLayerOutPtr;
   std::vector<std::vector<tensor_shape_t>> mLayerInShape, mLayerOutShape;
   std::vector<SyclEvent> mEvents;
   TimeRecorder mTimer;
   bool mProfile;
+  std::unordered_map<std::string, int> mMaxVariables;
   sycl::queue mQueue;
 };
 
@@ -354,10 +363,9 @@ public:
     return engine;
   }
 
-  
   void updateDynamicBindings(DynamicBindings *ptr) {
     auto layercount = mGraph->mNodes.size();
-    ptr->mLayerRecorder.resize(layercount);
+    ptr->mEvents.resize(layercount);
     ptr->mLayerInPtr.resize(layercount);
     ptr->mLayerOutPtr.resize(layercount);
     ptr->mLayerInShape.resize(layercount);
