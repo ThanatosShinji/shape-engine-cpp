@@ -5,10 +5,10 @@
 由onnx-tool实现了大多数的graph优化和融合逻辑, 推理引擎只专注于计算方法的实现.
   
 Project | Language | Platform Support | Device | Library  
----|---|---|---  
-simple_inference_engine | cpp |  All | All | None  
+---|---|---|---|---  
+simple_inference_engine | cpp |  All | All | None    
 simple_cuda_engine | CUDA cpp | Windows Linux | Nvidia GPUs | cuBlas cuDNN  
-simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN  
+simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN
   
   
 ## Compute Graph & Shape Engine  

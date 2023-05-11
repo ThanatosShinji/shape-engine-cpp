@@ -5,11 +5,10 @@ A tiny inference sample with onnx-tool's compute graph and shape engine.  It imp
 This repo also creates a tiny inference engine template for ResNet18 model. The size of compiled engine is 76KB.
   
 Project | Language | Platform Support | Device | Library  
----|---|---|---  
-simple_inference_engine | cpp |  All | All | None  
+---|---|---|---|---  
+simple_inference_engine | cpp |  All | All | None    
 simple_cuda_engine | CUDA cpp | Windows Linux | Nvidia GPUs | cuBlas cuDNN  
-simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN  
-  
+simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN
   
 ## Compute Graph & Shape Engine  
 ---
