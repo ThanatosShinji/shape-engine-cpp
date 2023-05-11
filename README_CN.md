@@ -3,12 +3,13 @@
 本项目实现了onnx-tool中的compute graph和shape engine的cpp类. 可以让cpp代码加载通过onnx-tool序列化的compute graph和shape engine.
 可以实现高效率的动态输入更新全图的tensor shapes.另外本项目实现了一个cpp-based推理引擎, 一个cuda-based推理引擎, 实现了compute graph和shape engine的集成调用.
 由onnx-tool实现了大多数的graph优化和融合逻辑, 推理引擎只专注于计算方法的实现.
-
-Project | Language | Platform Support | Device | Library 
----|---|---|---
-simple_inference_engine | cpp |  All | All | None
-simple_cuda_engine | CUDA cpp | Windows Linux | Nvidia GPUs | cuBlas cuDNN
-simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN
+  
+Project | Language | Platform Support | Device | Library  
+---|---|---|---  
+simple_inference_engine | cpp |  All | All | None  
+simple_cuda_engine | CUDA cpp | Windows Linux | Nvidia GPUs | cuBlas cuDNN  
+simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN  
+  
   
 ## Compute Graph & Shape Engine  
 ---
