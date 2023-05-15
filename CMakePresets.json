@@ -30,7 +30,7 @@
       }
     },
     {
-      "name": "x64-debug-CUDA",
+      "name": "x64-debug-cuda",
       "displayName": "x64 Debug CUDA",
       "inherits": "windows-base",
       "architecture": {
@@ -40,6 +40,14 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ENABLE_CUDA": "ON"
+      }
+    },
+    {
+      "name": "x64-release-cuda",
+      "displayName": "x64 Release CUDA",
+      "inherits": "x64-debug-cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
