@@ -2,6 +2,8 @@
 #include "graph.h"
 #include "shape_engine.h"
 #include <chrono>
+#include <dnnl.hpp>
+#include <dnnl_sycl.hpp>
 #include <memory>
 #include <sycl/sycl.hpp>
 
@@ -104,6 +106,13 @@ static auto exception_handler = [](sycl::exception_list e_list) {
     }
   }
 };
+//sycl::queue can get everything you need.
+//DNNL makes it complicated
+struct FckDNNL {
+  sycl::queue *q;
+  dnnl::engine *eng;
+  dnnl::stream *stream;
+};
 
 class DynamicBindings {
 public:
@@ -117,6 +126,13 @@ public:
     } else {
       mQueue = sycl::queue(d_selector, exception_handler);
     }
+
+    auto ctx = mQueue.get_context();
+    auto dev = mQueue.get_device();
+    mDNNLEngine = dnnl::sycl_interop::make_engine(dev, ctx);
+    mDNNLStream =
+        dnnl::sycl_interop::make_stream(mDNNLEngine, mQueue);
+    mFck = FckDNNL{&mQueue, &mDNNLEngine, &mDNNLStream};
   }
 
   ~DynamicBindings() { sync(); }
@@ -192,6 +208,7 @@ public:
 
   void sync() {
     mQueue.wait();
+    mDNNLStream.wait();
     mTimer.record_end();
   }
 
@@ -229,6 +246,9 @@ public:
   bool mProfile;
   std::unordered_map<std::string, int> mMaxVariables;
   sycl::queue mQueue;
+  dnnl::engine mDNNLEngine;
+  dnnl::stream mDNNLStream;
+  FckDNNL mFck;
 };
 
 class LayerBase {
@@ -241,7 +261,7 @@ public:
                               std::vector<tensor_shape_t> &mIShapes,
                               std::vector<void *> &mOutputs,
                               std::vector<tensor_shape_t> &mOShapes,
-                              sycl::queue &_stream) = 0;
+                              FckDNNL &_stream) = 0;
 
   virtual void setweights(std::vector<onnx_tool::Tensor> &tensors,
                           sycl::queue &_q) = 0;
@@ -310,7 +330,7 @@ public:
       _bindings->mEvents[i].mEvent = mLayers[i]->forward(
           _bindings->mLayerInPtr[i], _bindings->mLayerInShape[i],
           _bindings->mLayerOutPtr[i], _bindings->mLayerOutShape[i],
-          _bindings->mQueue);
+          _bindings->mFck);
     }
   }
 

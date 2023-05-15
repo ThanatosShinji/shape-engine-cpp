@@ -49,7 +49,8 @@
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "icx",
         "CMAKE_C_COMPILER": "icx",
-        "ENABLE_SYCL": "ON"
+        "ENABLE_SYCL": "ON",
+        "WITH_DNNL": "ON"
       }
     },
     {
