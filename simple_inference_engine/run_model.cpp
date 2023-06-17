@@ -109,7 +109,70 @@ void inference_resnet50() {
   delete runtime;
 }
 
+void inference_gpt2()
+{
+  const char *filepath = "gpt2.se";
+  // Shape engine is very light
+  // Each binding should have its unique shape engine
+  auto engine = onnx_tool::shape_engine::ShapeEngine();
+  engine.deserializeFile(filepath);
+
+  // Avoid to copy this instance
+  // Graph contains all weights, you dont want multiple copies
+  const char *cfilepath = "gpt2.cg";
+  auto ptr = onnx_tool::Graph::deserializeFile(cfilepath);
+
+  // Contruct inference context with compute graph and shape engine
+  auto ctx = InferenceContext(ptr, engine);
+
+  const char *mfilepath = "gpt2.cm";
+  auto memory = onnx_tool::MemoryMap();
+  memory.deserializeFile(mfilepath);
+
+  // The MemoryMap is a compressed memory allocator. Using it to create
+  // DynamicBindings will save memory space.
+  auto dbindings = ctx.createDynamicBindings(memory, true, {"data"});
+
+
+  // Runtime Engine=Op Kernels+static weights
+  // one runtime Engine can execute multiple bindings at the same time
+  auto runtime = ctx.createRuntimeEngine();
+
+  // Done with createDynamicBindings and createRuntimeEngine, you can release
+  // Graph to save memory space.
+  ctx.mGraph.reset(nullptr);
+
+  dbindings->reshape({{"seq", 8}});
+  // simple case with profile on
+  auto inputidx = ctx.mDynamicIndexMap["input1"];          // input tensor
+  auto inputptr = (int *)dbindings->mPtrs[inputidx];   // input tensor buffer
+  auto in_shape = dbindings->mShapePtr[inputidx];        // input shape pointer
+  auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1,
+                              std::multiplies<int>());
+  for (int i = 0; i < size; i++) {
+    inputptr[i] = 1;
+  }
+
+  printf("\n1x3x224x224\n");
+  for (int i = 0; i < 1; i++) {
+    runtime->forward(dbindings); // inference with this bindings
+  }
+  runtime->save_proflie("test.csv", dbindings);
+
+  auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"]; // output
+                                                                 // tensor
+  auto outputptr = (float *)dbindings->mPtrs[outputidx];
+  auto out_shape = dbindings->mShapePtr[outputidx]; // output shape pointer
+  auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1,
+                               std::multiplies<int>());
+  for (int i = 0; i < osize; i++) {
+    printf("%f ", outputptr[i]);
+  }
+  printf("\n");
+}
+
 int main() {
-  inference_resnet50();
+  //inference_resnet50();
+  inference_gpt2();
   return 0;
 }

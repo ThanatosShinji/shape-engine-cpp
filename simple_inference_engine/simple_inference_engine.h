@@ -287,6 +287,8 @@ public:
           }
         }
         layerptr->setweights(in_stensors);
+      } else {
+        printf("Not Implemented Layer:%s\n", node.mOpType.c_str());
       }
       engine->mLayers[i] = layerptr;
     }
