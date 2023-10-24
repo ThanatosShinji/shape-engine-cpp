@@ -8,6 +8,18 @@ using namespace simple_inference_engine_f32;
 
 std::vector<LayerCreator *> LayerFactory::mCreatetors;
 
+size_t shape_volume(int *ptr, int n) {
+  size_t vol = 1;
+  for (size_t i = 0; i < n; i++) {
+    vol *= ptr[i];
+  }
+  return vol;
+}
+
+size_t shape_volume(tensor_shape_t &shape) {
+  return shape_volume(shape.ptr, shape.n);
+}
+
 class Conv : public LayerBase {
 public:
   Conv(const char *_name, attr_map_t &attrs) : LayerBase(_name, attrs) {
@@ -367,9 +379,13 @@ public:
     auto xshape = mIShapes[0];
     M = xshape.ptr[0];
     if (xshape.n > 2) {
-      M = 1;
-      for (size_t i = 0; i < xshape.n - 1; i++) {
-        M *= xshape.ptr[i];
+      if (xshape.n == 4) {
+        M = xshape.ptr[0] * xshape.ptr[1];
+      } else {
+        M = 1;
+        for (size_t i = 0; i < xshape.n - 1; i++) {
+          M *= xshape.ptr[i];
+        }
       }
     }
     if (mTransA[0]) {
@@ -549,8 +565,17 @@ public:
       x1ptr = (float *)mInputs[1];
       x1shape = mIShapes[1];
     }
+    auto vol0 = shape_volume(mIShapes[0]);
+    auto vol1 = shape_volume(mIShapes[1]);
+
     auto yptr = (float *)mOutputs[0];
     auto yshape = mOShapes[0];
+    if (vol0 == vol1) {
+      for (size_t i = 0; i < vol0; i++) {
+        yptr[i] = xptr[i] + x1ptr[i];
+      }
+      return;
+    }
     if (xshape.n == 3 && x1shape.n == xshape.n) {
       for (size_t ib = 0; ib < yshape.ptr[0]; ib++) {
         int x0_offset =
@@ -698,62 +723,20 @@ public:
                std::vector<void *> &mOutputs,
                std::vector<tensor_shape_t> &mOShapes) override {
     auto xptr = (float *)mInputs[0];
-    auto xshape = mIShapes[0];
-    auto x1ptr = mWeights.data();
-    std::vector<int> tmpWS;
-    if (mInputs.size() == 1) {
-      tmpWS.resize(xshape.n);
-      int i = 0;
-      int padding = xshape.n - mWShape.size();
-      for (; i < padding; i++) {
-        tmpWS[i] = 1;
-      }
-      for (; i < xshape.n; i++) {
-        tmpWS[i] = mWShape[i - padding];
-      }
-    }
-
-    tensor_shape_t wtmp{tmpWS.size(), tmpWS.data()};
-    auto x1shape = wtmp;
-    if (mInputs.size() > 1) {
-      x1ptr = (float *)mInputs[1];
-      x1shape = mIShapes[1];
-    }
     auto yptr = (float *)mOutputs[0];
-    auto yshape = mOShapes[0];
-    if (xshape.n == 3 && x1shape.n == xshape.n) {
-      for (size_t ib = 0; ib < yshape.ptr[0]; ib++) {
-        int x0_offset =
-            xshape.ptr[0] == 1 ? 0 : ib * xshape.ptr[1] * xshape.ptr[2];
-        int x1_offset =
-            x1shape.ptr[0] == 1 ? 0 : ib * x1shape.ptr[1] * x1shape.ptr[2];
-        for (int i = 0; i < yshape.ptr[1]; i++) {
-          int x0_offset_1 =
-              xshape.ptr[1] == 1 ? x0_offset : x0_offset + i * xshape.ptr[2];
-          int x1_offset_1 =
-              x1shape.ptr[1] == 1 ? x1_offset : x1_offset + i * x1shape.ptr[2];
-          for (int j = 0; j < yshape.ptr[2]; j++) {
-            int x0_offset_2 =
-                xshape.ptr[2] == 1 ? x0_offset_1 : x0_offset_1 + j;
-            int x1_offset_2 =
-                x1shape.ptr[2] == 1 ? x1_offset_1 : x1_offset_1 + j;
-            yptr[ib * yshape.ptr[1] * yshape.ptr[2] + i * yshape.ptr[2] + j] =
-                xptr[x0_offset_2] * x1ptr[x1_offset_2];
-          }
-        }
-      }
-    } else if (xshape.n == 4) {
-      for (int i = 0; i < xshape.ptr[0]; i++) {
-        for (int j = 0; j < xshape.ptr[1]; j++) {
-          for (int k = 0; k < xshape.ptr[2]; k++) {
-            for (int l = 0; l < xshape.ptr[3]; l++) {
-              auto offset = i * xshape.ptr[1] * xshape.ptr[2] * xshape.ptr[3] +
-                            j * xshape.ptr[2] * xshape.ptr[3] +
-                            k * xshape.ptr[3] + l;
-              yptr[offset] = xptr[offset] * x1ptr[offset];
-            }
-          }
-        }
+    auto xshape = mIShapes[0];
+    std::vector<int> tmpWS;
+    if (mInputs.size() != 1) {
+      return;
+    }
+    int nfea = xshape.ptr[xshape.n - 1];
+    if (mWShape[0] != nfea) {
+      return;
+    }
+    auto batch = shape_volume(xshape.ptr, xshape.n - 1);
+    for (size_t i = 0; i < batch; i++) {
+      for (size_t j = 0; j < nfea; j++) {
+        yptr[i * nfea + j] = xptr[i * nfea + j] * mAlpha[j] + mBeta[j];
       }
     }
   }
@@ -766,20 +749,21 @@ public:
     mWShape = w.mShape;
     auto size = std::accumulate(w.mShape.begin(), w.mShape.end(), 1,
                                 std::multiplies<int>());
-    mWeights.resize(size);
-    std::memcpy(mWeights.data(), w.mRawptr, size * sizeof(float));
+    mAlpha.resize(size);
+    mBeta.resize(size);
+    std::memcpy(mAlpha.data(), w.mRawptr, size * sizeof(float));
+    std::memcpy(mBeta.data(), tensors[1].mRawptr, size * sizeof(float));
   }
-  std::vector<float> mWeights;
+  std::vector<float> mAlpha, mBeta;
   std::vector<int> mWShape;
 };
 REGISTER_LAYER(Mad);
-
 
 class Layernrom : public LayerBase {
 public:
   Layernrom(const char *_name, attr_map_t &attrs) : LayerBase(_name, attrs) {
     mReduceMean0_axes = attrs["ReduceMean0_axes"].mInts;
-    mReduceMean4_axes = attrs["ReduceMean4_axes"].mInts;
+    mReduceMean4_axes = attrs["ReduceMean3_axes"].mInts;
   }
 
   void forward(std::vector<void *> &mInputs,
@@ -861,7 +845,7 @@ public:
     int hiddensize = qkvshape.ptr[1] / 3;
     int headsize = kvshape.ptr[4];
     int headnum = kvshape.ptr[2];
-    if (qkvshape.ptr[2] % 3 != 0) {
+    if (qkvshape.ptr[1] % 3 != 0) {
       return;
     }
     int seq_len = kvshape.ptr[3];
@@ -925,26 +909,105 @@ public:
         }
       }
       auto ybatchptr = yptr + i * seq_len * hiddensize;
-      transpose0213(mm1ptr, ybatchptr, 1, headnum, seq_len, headsize,headsize);
+      transpose0213(mm1ptr, ybatchptr, 1, headnum, seq_len, headsize,
+                    headsize * seq_len);
     }
   }
 
   virtual void setweights(std::vector<onnx_tool::Tensor> &tensors) override {
-    mMMScale = *(float *)tensors[0].mRawptr;
-    auto &mask = tensors[1];
+    mMMScale = *(float *)tensors[6].mRawptr;
+    auto &mask = tensors[0];
     mMaskDim.resize(2);
     mMaskDim[0] = mask.mShape[2];
     mMaskDim[1] = mask.mShape[3];
-    mMaskSubOp0 = *(float *)tensors[7].mRawptr;
-    mMaskMulOp1 = *(float *)tensors[8].mRawptr;
+    // mMaskSubOp0 = *(float *)tensors[7].mRawptr;
+    // mMaskMulOp1 = *(float *)tensors[8].mRawptr;
     mMaskArray.resize(mMaskDim[0] * mMaskDim[1]);
-    memcpy(mMaskArray.data(), mask.mRawptr, mMaskArray.size() * sizeof(float));
+    memcpy(mMaskArray.data(), mask.mRawptr,
+           mMaskArray.size() * sizeof(uint8_t));
   }
   float mMMScale = 1.f;
   float mMaskSubOp0 = 1.f;
   float mMaskMulOp1 = 1000.f;
-  std::vector<float> mMaskArray;
+  std::vector<uint8_t> mMaskArray;
   std::vector<int> mMaskDim;
 };
 REGISTER_LAYER(MHA);
 
+class Gelu : public LayerBase {
+public:
+  Gelu(const char *_name, attr_map_t &attrs) : LayerBase(_name, attrs) {}
+
+  void forward(std::vector<void *> &mInputs,
+               std::vector<tensor_shape_t> &mIShapes,
+               std::vector<void *> &mOutputs,
+               std::vector<tensor_shape_t> &mOShapes) override {
+    auto xptr = (float *)mInputs[0];
+    auto xshape = mIShapes[0];
+    auto yptr = (float *)mOutputs[0];
+    auto yshape = mOShapes[0];
+    auto xvol = shape_volume(mIShapes[0]);
+    auto yvol = shape_volume(mOShapes[0]);
+    if (xvol != yvol) {
+      return;
+    }
+    for (size_t i = 0; i < xvol; i++) {
+      float x = xptr[i];
+      float tmp = x * x * x * mParams[2] + x;
+      tmp *= mParams[3];
+      tmp = tanh(tmp) + mParams[4];
+      tmp *= x * mParams[0];
+      yptr[i] = tmp;
+    }
+  }
+
+  virtual void setweights(std::vector<onnx_tool::Tensor> &tensors) override {
+    for (size_t i = 0; i < 5; i++) {
+      mParams[i] = *(float *)tensors[i].mRawptr;
+    }
+  }
+  float mParams[5];
+};
+REGISTER_LAYER(Gelu);
+
+class MatMul : public LayerBase {
+public:
+  MatMul(const char *_name, attr_map_t &attrs) : LayerBase(_name, attrs) {}
+
+  void forward(std::vector<void *> &mInputs,
+               std::vector<tensor_shape_t> &mIShapes,
+               std::vector<void *> &mOutputs,
+               std::vector<tensor_shape_t> &mOShapes) override {
+    auto xptr = (float *)mInputs[0];
+    auto xshape = mIShapes[0];
+    auto M = shape_volume(xshape.ptr, xshape.n - 1);
+    auto yptr = (float *)mOutputs[0];
+    if (mInputs.size() == 2) {
+      return;
+    }
+    for (int i = 0; i < M; i++) {
+      for (int j = 0; j < N; j++) {
+        auto tmp = 0.f;
+        for (int k = 0; k < K; k++) {
+          tmp += xptr[i * K + k] * mWeights[j + k * N];
+        }
+        yptr[i * N + j] = tmp;
+      }
+    }
+  }
+
+  virtual void setweights(std::vector<onnx_tool::Tensor> &tensors) override {
+    auto &weight = tensors[0];
+    K = weight.mShape[0];
+    N = weight.mShape[1];
+
+    auto newsize = N * K;
+    mWeights.resize(newsize);
+    auto rawptr = (float *)weight.mRawptr;
+    memcpy(mWeights.data(), rawptr, newsize * sizeof(float));
+  }
+
+  int N, K;
+  std::vector<float> mWeights;
+};
+REGISTER_LAYER(MatMul);

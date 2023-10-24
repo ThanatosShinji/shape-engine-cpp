@@ -1,7 +1,47 @@
 #include "simple_inference_engine.h"
+#include <algorithm>
 #include <numeric>
 #include <thread>
+
 using namespace simple_inference_engine_f32;
+
+void topk(const float *src, size_t size, const int k, const float filtervalue,
+          float *dst, float *maxvalue) {
+  std::memcpy(dst, src, size * sizeof(float));
+  std::sort(dst, dst + size);
+  auto threshold = dst[size - k];
+  auto maxv = filtervalue;
+  for (size_t i = 0; i < size; i++) {
+    auto val = src[i] <= threshold ? filtervalue : src[i];
+    dst[i] = val;
+    maxv = val > maxv ? val : maxv;
+  }
+  *maxvalue = maxv;
+}
+
+void softmax(const float *src, size_t size, float maxvalue, float *prob) {
+  double expsum = 0;
+  for (size_t i = 0; i < size; i++) {
+    prob[i] = expf(src[i] - maxvalue);
+    expsum += prob[i];
+  }
+  float scale = float(1.0 / expsum);
+  for (size_t i = 0; i < size; i++) {
+    prob[i] *= scale;
+  }
+}
+#include <random>
+size_t prob_sample(const float *prob, size_t size) {
+  auto rv = float(std::rand()) / RAND_MAX;
+  float accv = 0.f;
+  for (size_t i = 0; i < size; i++) {
+    if (accv <= rv && accv + prob[i] > rv) {
+      return i;
+    }
+    accv += prob[i];
+  }
+  return size - 1;
+}
 
 void inference_resnet50() {
   const char *filepath = "resnet50_fused.se";
@@ -109,8 +149,7 @@ void inference_resnet50() {
   delete runtime;
 }
 
-void inference_gpt2()
-{
+void inference_gpt2() {
   const char *filepath = "gpt2.se";
   // Shape engine is very light
   // Each binding should have its unique shape engine
@@ -131,8 +170,9 @@ void inference_gpt2()
 
   // The MemoryMap is a compressed memory allocator. Using it to create
   // DynamicBindings will save memory space.
-  auto dbindings = ctx.createDynamicBindings(memory, true, {"data"});
-
+  const char *debugtensor = "238";
+  auto dbindings =
+      ctx.createDynamicBindings(memory, false, {debugtensor, "input1"});
 
   // Runtime Engine=Op Kernels+static weights
   // one runtime Engine can execute multiple bindings at the same time
@@ -142,37 +182,45 @@ void inference_gpt2()
   // Graph to save memory space.
   ctx.mGraph.reset(nullptr);
 
-  dbindings->reshape({{"seq", 8}});
+  int testprompt[] = {15496, 11, 314, 1101, 257, 3303, 2746, 11};
+  int ninput = sizeof(testprompt) / sizeof(testprompt[0]);
+  dbindings->reshape({{"seq", ninput}});
+  int ngen = 10;
   // simple case with profile on
-  auto inputidx = ctx.mDynamicIndexMap["input1"];          // input tensor
-  auto inputptr = (int *)dbindings->mPtrs[inputidx];   // input tensor buffer
-  auto in_shape = dbindings->mShapePtr[inputidx];        // input shape pointer
+  auto inputidx = ctx.mDynamicIndexMap["input1"];    // input tensor
+  auto inputptr = (int *)dbindings->mPtrs[inputidx]; // input tensor buffer
+  auto in_shape = dbindings->mShapePtr[inputidx];    // input shape pointer
   auto size = std::accumulate(in_shape.ptr, in_shape.ptr + in_shape.n, 1,
                               std::multiplies<int>());
-  for (int i = 0; i < size; i++) {
-    inputptr[i] = 1;
-  }
-
-  printf("\n1x3x224x224\n");
-  for (int i = 0; i < 1; i++) {
-    runtime->forward(dbindings); // inference with this bindings
-  }
-  runtime->save_proflie("test.csv", dbindings);
-
-  auto outputidx = ctx.mDynamicIndexMap["resnetv24_dense0_fwd"]; // output
-                                                                 // tensor
+  auto outputidx = ctx.mDynamicIndexMap["output1"];
   auto outputptr = (float *)dbindings->mPtrs[outputidx];
+  auto debugptr = (float *)dbindings->mPtrs[ctx.mDynamicIndexMap[debugtensor]];
   auto out_shape = dbindings->mShapePtr[outputidx]; // output shape pointer
-  auto osize = std::accumulate(out_shape.ptr, out_shape.ptr + out_shape.n, 1,
-                               std::multiplies<int>());
-  for (int i = 0; i < osize; i++) {
-    printf("%f ", outputptr[i]);
+  int lm_size = out_shape.ptr[3];
+  std::vector<float> topkout(lm_size), prob(lm_size);
+
+  for (int i = 0; i < size; i++) {
+    inputptr[i] = testprompt[i];
   }
+  float valmax = 0.f;
+  srand(42);
+  for (size_t i = 0; i < ngen; i++) {
+    dbindings->reshape({{"seq", ninput + i}});
+    runtime->forward(dbindings); // inference with this bindings
+    topk(outputptr + (ninput + i - 1) * lm_size, lm_size, 50, -10000.f,
+         topkout.data(), &valmax);
+    softmax(topkout.data(), lm_size, valmax, prob.data());
+    auto nextids = prob_sample(prob.data(), lm_size);
+    inputptr[ninput + i] = nextids;
+    printf("%d,", nextids);
+  }
+
+  // runtime->save_proflie("test.csv", dbindings);
   printf("\n");
 }
 
 int main() {
-  //inference_resnet50();
+  // inference_resnet50();
   inference_gpt2();
   return 0;
 }
