@@ -507,14 +507,16 @@ public:
                std::vector<tensor_shape_t> &mIShapes,
                std::vector<void *> &mOutputs,
                std::vector<tensor_shape_t> &mOShapes) override {
+    auto npastptr = (int64_t *)mInputs[2];
     auto yptr = (float *)mOutputs[0];
     auto yshape = mOShapes[0];
+    int n_past = *npastptr;
     if (yshape.n == 3) {
       for (size_t ib = 0; ib < yshape.ptr[0]; ib++) {
         for (int i = 0; i < yshape.ptr[1]; i++) {
           std::memcpy(yptr + ib * yshape.ptr[1] * yshape.ptr[2] +
                           i * yshape.ptr[2],
-                      mWeights.data() + i * yshape.ptr[2],
+                      mWeights.data() + (n_past + i) * yshape.ptr[2],
                       yshape.ptr[2] * sizeof(float));
         }
       }
@@ -809,6 +811,7 @@ public:
   float mEpsilon = 0.f;
 };
 REGISTER_LAYER(Layernrom);
+
 static void transpose0213(const float *src, float *dst, int d0, int d1, int d2,
                           int d3, int ldsrc) {
   int sstep0 = d1 * ldsrc;
@@ -823,6 +826,21 @@ static void transpose0213(const float *src, float *dst, int d0, int d1, int d2,
         for (int l = 0; l < d3; l++) {
           dst[i * dstep0 + k * dstep1 + j * dstep2 + l] =
               src[i * sstep0 + j * sstep1 + k * sstep2 + l];
+        }
+      }
+    }
+  }
+}
+
+static void transpose0213(const float *src, float *dst, int d0, int d1, int d2,
+                          int d3, int lds0, int lds1, int lds2, int ldd0,
+                          int ldd1, int ldd2) {
+  for (int i = 0; i < d0; i++) {
+    for (int j = 0; j < d1; j++) {
+      for (int k = 0; k < d2; k++) {
+        for (int l = 0; l < d3; l++) {
+          dst[i * ldd0 + k * ldd1 + j * ldd2 + l] =
+              src[i * lds0 + j * lds1 + k * lds2 + l];
         }
       }
     }
@@ -933,6 +951,115 @@ public:
   std::vector<int> mMaskDim;
 };
 REGISTER_LAYER(MHA);
+
+class MHA_KVcache : public LayerBase {
+public:
+  MHA_KVcache(const char *_name, attr_map_t &attrs) : LayerBase(_name, attrs) {}
+
+  void forward(std::vector<void *> &mInputs,
+               std::vector<tensor_shape_t> &mIShapes,
+               std::vector<void *> &mOutputs,
+               std::vector<tensor_shape_t> &mOShapes) override {
+    auto kvptr = (float *)mOutputs[0]; // kv cache
+    auto yptr = (float *)mOutputs[1];
+    auto kvshape = mOShapes[0];
+    auto yshape = mOShapes[1];
+    auto qkvptr = (float *)mInputs[0];
+    auto npastptr = (int64_t *)mInputs[4];
+    auto qkvshape = mIShapes[0];
+    int hiddensize = qkvshape.ptr[1] / 3;
+    int headsize = kvshape.ptr[4];
+    int headnum = kvshape.ptr[2];
+    int seq_len = kvshape.ptr[3];
+    int batch = kvshape.ptr[1];
+    int mask_maxlen = mMaskDim[1];
+    int max_seq = mask_maxlen;
+    auto qptr = qkvptr;
+    auto kptr = qptr + hiddensize;
+    auto vptr = kptr + hiddensize;
+    auto kTptr = kvptr;
+    auto vTptr = kTptr + batch * max_seq * hiddensize;
+    int n_past = *npastptr;
+    int len_total = n_past + seq_len;
+    auto tempbuf = new float[seq_len * hiddensize * 2 + seq_len * len_total];
+    transpose0213(kptr, kTptr + n_past * headsize, batch, seq_len, headnum,
+                  headsize, seq_len * hiddensize * 3, hiddensize * 3, headsize,
+                  headnum * max_seq * headsize, max_seq * headsize, headsize);
+    transpose0213(vptr, vTptr + n_past * headsize, batch, seq_len, headnum,
+                  headsize, seq_len * hiddensize * 3, hiddensize * 3, headsize,
+                  headnum * max_seq * headsize, max_seq * headsize, headsize);
+    for (int i = 0; i < batch; i++) {
+      auto qTptr = tempbuf;                       // seq*hiddensize
+      auto mm0ptr = qTptr + seq_len * hiddensize; // seq*len_total
+      auto mm1ptr = mm0ptr + seq_len * len_total; // seq*hiddensize
+      transpose0213(qptr + i * seq_len * hiddensize * 3, qTptr, 1, seq_len,
+                    headnum, headsize, hiddensize * 3);
+
+      auto kTbatchptr = kTptr + i * max_seq * hiddensize;
+      auto vTbatchptr = vTptr + i * max_seq * hiddensize;
+      auto maskptr = mMaskArray.data();
+      // first matmul
+      float rscale = 1.f / mMMScale;
+      for (size_t j = 0; j < headnum; j++) {
+        for (size_t im = 0; im < seq_len; im++) {
+          float expsum = 0.f;
+          float maxexp = 0.f;
+          for (size_t in = 0; in < len_total; in++) {
+            float tmp = 0.f;
+            for (size_t ik = 0; ik < headsize; ik++) {
+              tmp += qTptr[j * seq_len * headsize + im * headsize + ik] *
+                     kTbatchptr[j * max_seq * headsize + in * headsize + ik];
+            }
+            auto m = maskptr[(im + n_past) * mask_maxlen + in];
+            mm0ptr[im * len_total + in] = m == 1.f ? tmp * rscale : -10000.f;
+            maxexp = mm0ptr[im * len_total + in] > maxexp
+                         ? mm0ptr[im * len_total + in]
+                         : maxexp;
+          }
+          for (size_t in = 0; in < len_total; in++) {
+            mm0ptr[im * len_total + in] =
+                std::expf(mm0ptr[im * len_total + in] - maxexp);
+            expsum += mm0ptr[im * len_total + in];
+          }
+          for (size_t in = 0; in < len_total; in++) {
+            mm0ptr[im * len_total + in] /= expsum;
+          }
+          for (size_t in = 0; in < headsize; in++) {
+            float tmp = 0.f;
+            for (size_t ik = 0; ik < len_total; ik++) {
+              tmp += mm0ptr[im * len_total + ik] *
+                     vTbatchptr[j * max_seq * headsize + ik * headsize + in];
+            }
+            mm1ptr[j * seq_len * headsize + im * headsize + in] = tmp;
+          }
+        }
+      }
+      auto ybatchptr = yptr + i * seq_len * hiddensize;
+      transpose0213(mm1ptr, ybatchptr, 1, headnum, seq_len, headsize,
+                    headsize * seq_len);
+    }
+    delete[] tempbuf;
+  }
+
+  virtual void setweights(std::vector<onnx_tool::Tensor> &tensors) override {
+    mMMScale = *(float *)tensors[6].mRawptr;
+    auto &mask = tensors[0];
+    mMaskDim.resize(2);
+    mMaskDim[0] = mask.mShape[2];
+    mMaskDim[1] = mask.mShape[3];
+    // mMaskSubOp0 = *(float *)tensors[7].mRawptr;
+    // mMaskMulOp1 = *(float *)tensors[8].mRawptr;
+    mMaskArray.resize(mMaskDim[0] * mMaskDim[1]);
+    memcpy(mMaskArray.data(), mask.mRawptr,
+           mMaskArray.size() * sizeof(uint8_t));
+  }
+  float mMMScale = 1.f;
+  float mMaskSubOp0 = 1.f;
+  float mMaskMulOp1 = 1000.f;
+  std::vector<uint8_t> mMaskArray;
+  std::vector<int> mMaskDim;
+};
+REGISTER_LAYER(MHA_KVcache);
 
 class Gelu : public LayerBase {
 public:
