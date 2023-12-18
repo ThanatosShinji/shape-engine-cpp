@@ -9,6 +9,10 @@ Project | Language | Platform Support | Device | Library
 simple_inference_engine | cpp |  All | All | None    
 simple_cuda_engine | CUDA cpp | Windows Linux | Nvidia GPUs | cuBlas cuDNN  
 simple_sycl_engine | SYCL cpp | Windows Linux | OpenCL Devices | oneMKL oneDNN
+
+Model | Device | Library | First-token Latency(ms) | Next-token Latency(ms)
+---|---|---|---|---
+GPT-2|intel 13900|JBLAS|40|8.4
   
 ## Compute Graph & Shape Engine  
 ---

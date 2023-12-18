@@ -79,7 +79,13 @@ void inference_gpt2_kvcache() {
   // Graph to save memory space.
   ctx.mGraph.reset(nullptr);
 
-  int testprompt[] = {15496, 11, 314, 1101, 257, 3303, 2746, 11};
+  // int testprompt[] = {15496, 11, 314, 1101, 257, 3303, 2746, 11};
+  // "Hello, I'm a language model, a way of reasoning by data. I've been"
+  int testprompt[] = {818,   428,  6152,  11,  1123,  1573, 318,  7997, 416,
+                      257,   3748, 11241, 13,  29130, 1634, 318,  262,  1429,
+                      286,   7163, 866,   257, 6827,  393,  9546, 656,  1981,
+                      16326, 11,   543,   460, 788}; 
+  // In this prompt, each word is represented by a unique token. Tokenization is the process of breaking down a sentence or phrase into individual tokens, which can then
   int ninput = sizeof(testprompt) / sizeof(testprompt[0]);
   dbindings->reshape({{"seq", ninput}});
   int ngen = 10;
@@ -103,7 +109,7 @@ void inference_gpt2_kvcache() {
     inputptr[i] = testprompt[i];
   }
   *npast_ptr = 0;
-  //warm up
+  // warm up
   dbindings->reshape({{"seq", ninput}});
   runtime->forward(dbindings);
 #if 1
